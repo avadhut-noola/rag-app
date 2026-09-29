@@ -12,12 +12,12 @@ Preparing a PDF document for use with a Retrieval Augmented Generation (RAG) sys
 2. OpenAI API Key
 
 # Usage
-Install the requirements:
+1. Install the requirements:
 ``` pip3 install langchain langchain_community langchain_core langchain_openai langchain_mongodb pymongo pypdf ```
-Create a key_param file with the following content:
+
+2. Create a key_param file with the following content:
 MONGODB_URI=<atlas_connection_string>
 LLM_API_KEY=<llm_api_key>
 
-
-# Load the sample data into your Atlas Cluster:
+3. Load the sample data into your Atlas Cluster:
 ``` python load_data.py ```
