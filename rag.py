@@ -26,6 +26,7 @@ def query_data(query):
     retriever = vectorStore.as_retriever(
         search_type="similarity",
         search_kwargs={
+            # k is the number of documents to return
             "k": 3
         },
     )
