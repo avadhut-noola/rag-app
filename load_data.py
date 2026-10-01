@@ -1,12 +1,11 @@
 from pymongo import MongoClient
+from pypdf import PdfReader
+from langchain_core.documents import Document
 from langchain_openai import ChatOpenAI
 from langchain_voyageai import VoyageAIEmbeddings
-from langchain_community.vectorstores import MongoDBAtlasVectorSearch
-from langchain_community.document_loaders import PyPDFLoader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.document_transformers.openai_functions import (
-    create_metadata_tagger,
-)
+from langchain_mongodb import MongoDBAtlasVectorSearch
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from pydantic import BaseModel, Field
 
 import key_param
 
@@ -17,8 +16,12 @@ dbName = "book_mongodb_chunks"
 collectionName = "chunked_data"
 collection = client[dbName][collectionName]
 
-loader = PyPDFLoader(".\sample_files\mongodb.pdf")
-pages = loader.load()
+# Load PDF without langchain_community (avoids deprecation warning)
+reader = PdfReader("./sample_files/mongodb.pdf")
+pages = [
+    Document(page_content=page.extract_text() or "", metadata={"page": i})
+    for i, page in enumerate(reader.pages)
+]
 cleaned_pages = []
 
 # Loop through the pages and clean the data
@@ -31,26 +34,31 @@ for page in pages:
 text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=150)
 
 
-# This is the schema for the metadata that will be used to tag the documents
-schema = {
-    "properties": {
-        "title": {"type": "string"},
-        "keywords": {"type": "array", "items": {"type": "string"}},
-        "hasCode": {"type": "boolean"},
-    },
-    "required": ["title", "keywords", "hasCode"],
-}
+# Schema for metadata tagging (replaces deprecated openai_functions tagger)
+class PageMetadata(BaseModel):
+    title: str = Field(description="Short title for the page content")
+    keywords: list[str] = Field(description="Relevant keywords")
+    hasCode: bool = Field(description="Whether the page contains code samples")
+
 
 # Calling the OpenAI API to tag the documents
 llm = ChatOpenAI(
     openai_api_key=key_param.LLM_API_KEY, temperature=0, model="gpt-3.5-turbo"
 )
+structured_llm = llm.with_structured_output(PageMetadata)
 
-# Creating the document transformer
-document_transformer = create_metadata_tagger(metadata_schema=schema, llm=llm)
-
-# Transforming the documents passed cleaned pages as argument
-docs = document_transformer.transform_documents(cleaned_pages)
+# Tag each cleaned page with OpenAI-extracted metadata
+docs = []
+for page in cleaned_pages:
+    meta = structured_llm.invoke(
+        "Extract metadata for this document page:\n\n" + page.page_content
+    )
+    docs.append(
+        Document(
+            page_content=page.page_content,
+            metadata={**page.metadata, **meta.model_dump()},
+        )
+    )
 
 # Splitting the documents into chunks using the text splitter
 split_docs = text_splitter.split_documents(docs)

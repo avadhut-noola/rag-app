@@ -1,2 +1,5 @@
 # secrets 
 key_param.py
+
+#pycache
+__pycache__/
